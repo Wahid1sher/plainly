@@ -54,7 +54,7 @@ export function initFirebase() {
   // App Check is required by Firebase AI Logic. In development a debug token is
   // printed to the console; register it under App Check > Manage debug tokens.
   if (env.VITE_APPCHECK_DEBUG === 'true') {
-    (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN: boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN: boolean | string }).FIREBASE_APPCHECK_DEBUG_TOKEN = env.VITE_APPCHECK_DEBUG_TOKEN || true;
   }
   if (env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || env.VITE_APPCHECK_DEBUG === 'true') {
     initializeAppCheck(app, {
