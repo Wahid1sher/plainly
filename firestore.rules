@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Each signed-in (anonymous) user can only read and write their own saved analyses.
+    // Saved analyses contain redacted text only; the placeholder->detail vault never leaves the device.
+    match /users/{uid}/analyses/{id} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(['id', 'createdAt', 'redacted', 'explanation'])
+        && !request.resource.data.keys().hasAny(['vault'])
+        && request.resource.size() < 900 * 1024;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

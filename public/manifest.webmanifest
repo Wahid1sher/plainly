@@ -1,0 +1,9 @@
+{
+  "name": "Plainly: private document explainer",
+  "short_name": "Plainly",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f4ee",
+  "theme_color": "#0f5c4d",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
