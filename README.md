@@ -4,6 +4,8 @@
 
 Built for **#BuildHybridAI 2026** with **Firebase AI Logic hybrid inference** (Gemini Nano in Chrome + Gemini in the cloud).
 
+**▶ Live demo: https://plainly-hybrid-7dgez.web.app** (best in desktop Chrome with Gemini Nano; works in any browser via the cloud path)
+
 ---
 
 ## The problem
