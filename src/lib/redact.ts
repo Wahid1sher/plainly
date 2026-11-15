@@ -129,10 +129,13 @@ export function locate(text: string, entities: { text: string; type: string }[])
     if (!needle || needle.length < 3) continue;
     if (/^\[[A-Z_]+_\d+\]$/.test(needle)) continue;
     const type = normaliseType(e.type);
+    if (!plausible(needle, type)) continue;
     let from = 0;
     let idx: number;
     while ((idx = text.indexOf(needle, from)) !== -1) {
-      out.push({ start: idx, end: idx + needle.length, text: needle, type, source: 'on-device' });
+      // A date is only a date of birth when the document labels it as one; otherwise it's a deadline we must keep.
+      const labelled = type !== 'DOB' || /(birth|d\.?o\.?b|born)[^\n]{0,25}$/i.test(text.slice(Math.max(0, idx - 40), idx));
+      if (labelled) out.push({ start: idx, end: idx + needle.length, text: needle, type, source: 'on-device' });
       from = idx + needle.length;
     }
     // A full name found by the model also hides its parts when they appear alone ("Dear Maria").
@@ -146,6 +149,23 @@ export function locate(text: string, entities: { text: string; type: string }[])
     }
   }
   return out;
+}
+
+const DATE_LIKE = /^(?:\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|[A-Z][a-z]+\.? \d{1,2},? \d{4}|\d{1,2} [A-Z][a-z]+ \d{4}|\d{4}-\d{2}-\d{2})$/;
+
+/**
+ * Small models over-redact. Drop findings that would remove meaning the explanation needs:
+ * money, percentages, dates mistaken for names or IDs, organisations, and toll-free business numbers.
+ */
+function plausible(needle: string, type: EntityType): boolean {
+  if (/[$€£%]/.test(needle)) return false;
+  if (type !== 'DOB' && DATE_LIKE.test(needle)) return false;
+  const orgLike = new RegExp(ORG_WORDS.source, 'i').test(needle);
+  if (type === 'NAME' && (orgLike || /\d/.test(needle))) return false;
+  if (type === 'ADDRESS' && (orgLike || !/\d/.test(needle))) return false;
+  if (type === 'PHONE' && (TOLL_FREE.test(needle) || needle.replace(/\D/g, '').length < 7)) return false;
+  if (type === 'ID' && !/\d/.test(needle)) return false;
+  return true;
 }
 
 function normaliseType(t: string): EntityType {

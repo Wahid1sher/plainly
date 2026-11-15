@@ -1,29 +1,46 @@
 {
   "parameters": {
     "on_device_max_chars": {
-      "defaultValue": { "value": "6000" },
+      "defaultValue": {
+        "value": "6000"
+      },
       "description": "Longest redacted document (characters) explained by Gemini Nano in one pass in Balanced mode.",
       "valueType": "NUMBER"
     },
     "cloud_model": {
-      "defaultValue": { "value": "gemini-3.5-flash-lite" },
+      "defaultValue": {
+        "value": "gemini-3.5-flash-lite"
+      },
       "description": "Gemini model used for in-cloud inference.",
       "valueType": "STRING"
     },
     "local_chunk_chars": {
-      "defaultValue": { "value": "3500" },
+      "defaultValue": {
+        "value": "3500"
+      },
       "description": "Chunk size for on-device map-reduce of long documents in Strict local mode.",
       "valueType": "NUMBER"
     },
     "default_privacy_mode": {
-      "defaultValue": { "value": "balanced" },
+      "defaultValue": {
+        "value": "balanced"
+      },
       "description": "Privacy mode for new users: local | balanced | cloud.",
       "valueType": "STRING"
     },
     "on_device_shield": {
-      "defaultValue": { "value": "true" },
+      "defaultValue": {
+        "value": "true"
+      },
       "description": "Run the Gemini Nano personal-detail detector in addition to pattern rules.",
       "valueType": "BOOLEAN"
+    },
+    "on_device_timeout_ms": {
+      "defaultValue": {
+        "value": "45000"
+      },
+      "description": "Milliseconds an on-device call may go without progress before Gemini Nano is treated as stalled and Balanced mode switches to the cloud.",
+      "valueType": "NUMBER"
     }
   }
 }

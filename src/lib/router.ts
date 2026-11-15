@@ -52,7 +52,10 @@ export function decideRoute(i: RouteInput): Route {
         mode: M.ONLY_ON_DEVICE,
         strategy: 'blocked',
         expected: 'on-device',
-        reason: 'Strict local needs Gemini Nano, which is not ready on this device. Turn it on, or switch to Balanced.',
+        reason:
+          i.device === 'stalled'
+            ? 'Gemini Nano stopped responding in this browser. Restart Chrome, or switch to Balanced to use the cloud with personal details hidden.'
+            : 'Strict local needs Gemini Nano, which is not ready on this device. Turn it on, or switch to Balanced.',
         outLang: i.outLang,
       };
     }
@@ -102,7 +105,9 @@ export function decideRoute(i: RouteInput): Route {
     };
   }
   const why = !deviceReady
-    ? 'Gemini Nano is not ready on this device'
+    ? i.device === 'stalled'
+      ? 'Gemini Nano stopped responding in this browser'
+      : 'Gemini Nano is not ready on this device'
     : !fits
       ? `the document is long (${i.chars.toLocaleString()} chars, on-device limit ${i.maxOnDeviceChars.toLocaleString()})`
       : 'Gemini Nano cannot write this language yet';

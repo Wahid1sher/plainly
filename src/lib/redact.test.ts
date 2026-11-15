@@ -55,3 +55,30 @@ describe('Privacy Shield precision', () => {
     expect(redacted).not.toContain('(559) 555-0148');
   });
 });
+
+describe('Gemini Nano findings are sanity-checked', () => {
+  const bill = SAMPLES[0].text;
+  it('a deadline Nano mistakes for a date of birth is kept', () => {
+    const f = locate(bill, [{ text: 'December 3, 2026', type: 'date of birth' }]);
+    expect(f).toHaveLength(0);
+  });
+  it('a real, labelled date of birth is still hidden', () => {
+    const f = locate(bill, [{ text: '04/17/1981', type: 'date of birth' }]);
+    expect(f.length).toBeGreaterThan(0);
+  });
+  it('money, organisations, toll-free numbers and dates-as-IDs are kept', () => {
+    const f = locate(bill, [
+      { text: '$3,077.14', type: 'id number' },
+      { text: 'Riverside General Hospital', type: 'person name' },
+      { text: '1-800-555-0199', type: 'phone' },
+      { text: 'November 3, 2026', type: 'id number' },
+      { text: 'BlueValley PPO', type: 'id number' },
+      { text: 'RIVERSIDE GENERAL HOSPITAL', type: 'home address' },
+    ]);
+    expect(f).toHaveLength(0);
+  });
+  it('short service numbers like TTY 711 are kept', () => {
+    expect(SAMPLES[2].text).toContain('711');
+    expect(locate(SAMPLES[2].text, [{ text: '711', type: 'phone' }])).toHaveLength(0);
+  });
+});

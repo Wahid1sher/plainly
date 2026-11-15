@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
-import { getDeviceState, setCloudModel, type DeviceState } from './lib/ai';
+import { getDeviceState, onDeviceStall, setCloudModel, setOnDeviceTimeout, type DeviceState } from './lib/ai';
 import { DEFAULT_CONFIG, IS_CONFIGURED, loadRuntimeConfig, MOCK_AI, watchUser, type RuntimeConfig } from './lib/firebase';
 import { analyze, type Analysis, type Progress as ProgressFn, type Settings } from './lib/pipeline';
 import type { ReadingLevel } from './lib/prompts';
@@ -55,6 +55,7 @@ export default function App() {
     loadRuntimeConfig().then((c) => {
       setConfig(c);
       setCloudModel(c.cloudModel);
+      setOnDeviceTimeout(c.onDeviceTimeoutMs);
       if (!localStorage.getItem('plainly:privacy')) setPrivacy(c.defaultPrivacyMode);
     });
     const on = () => setOnline(true);
@@ -62,10 +63,12 @@ export default function App() {
     window.addEventListener('online', on);
     window.addEventListener('offline', off);
     const unsub = watchUser(setUser);
+    const unsubStall = onDeviceStall(() => setDevice('stalled'));
     return () => {
       window.removeEventListener('online', on);
       window.removeEventListener('offline', off);
       unsub();
+      unsubStall();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

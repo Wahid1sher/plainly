@@ -19,6 +19,7 @@ const DEVICE_TEXT: Record<DeviceState, string> = {
   downloading: 'Gemini Nano downloading…',
   unavailable: 'On-device AI not available',
   unsupported: 'On-device AI not supported in this browser',
+  stalled: 'Gemini Nano not responding · using cloud',
 };
 
 export function Header(p: Props) {
@@ -61,7 +62,7 @@ export function Header(p: Props) {
 
       <div className="header-right">
         <span className={`chip ${ready ? 'chip-device' : 'chip-muted'}`} title={DEVICE_TEXT[p.device]}>
-          <span className={`dot ${ready ? 'dot-green' : canEnable ? 'dot-amber' : 'dot-grey'}`} />
+          <span className={`dot ${ready ? 'dot-green' : canEnable || p.device === 'stalled' ? 'dot-amber' : 'dot-grey'}`} />
           {progress !== null ? `Downloading ${Math.round(progress * 100)}%` : DEVICE_TEXT[p.device]}
         </span>
         {canEnable && progress === null && (

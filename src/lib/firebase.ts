@@ -32,6 +32,8 @@ export interface RuntimeConfig {
   defaultPrivacyMode: 'local' | 'balanced' | 'cloud';
   /** Kill switch for the on-device PII pass (rules always run). */
   onDeviceShield: boolean;
+  /** How long an on-device call may go without progress before Plainly treats Gemini Nano as stalled. */
+  onDeviceTimeoutMs: number;
 }
 
 export const DEFAULT_CONFIG: RuntimeConfig = {
@@ -40,6 +42,7 @@ export const DEFAULT_CONFIG: RuntimeConfig = {
   localChunkChars: 3500,
   defaultPrivacyMode: 'balanced',
   onDeviceShield: true,
+  onDeviceTimeoutMs: 45_000,
 };
 
 let app: FirebaseApp | null = null;
@@ -73,6 +76,7 @@ export function initFirebase() {
     local_chunk_chars: DEFAULT_CONFIG.localChunkChars,
     default_privacy_mode: DEFAULT_CONFIG.defaultPrivacyMode,
     on_device_shield: DEFAULT_CONFIG.onDeviceShield,
+    on_device_timeout_ms: DEFAULT_CONFIG.onDeviceTimeoutMs,
   };
 }
 
@@ -99,6 +103,7 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
     localChunkChars: getValue(rc, 'local_chunk_chars').asNumber() || DEFAULT_CONFIG.localChunkChars,
     defaultPrivacyMode: mode === 'local' || mode === 'cloud' ? mode : 'balanced',
     onDeviceShield: getValue(rc, 'on_device_shield').asBoolean(),
+    onDeviceTimeoutMs: getValue(rc, 'on_device_timeout_ms').asNumber() || DEFAULT_CONFIG.onDeviceTimeoutMs,
   };
 }
 

@@ -50,3 +50,16 @@ describe('chunkText', () => {
     expect(chunks.join('\n\n')).toBe(text);
   });
 });
+
+describe('Privacy Router with a stalled Gemini Nano', () => {
+  it('Balanced → cloud, explains why', () => {
+    const r = decideRoute({ ...base, device: 'stalled' });
+    expect(r.mode).toBe('only_in_cloud');
+    expect(r.reason).toMatch(/stopped responding/);
+  });
+  it('Strict local → blocked with restart advice', () => {
+    const r = decideRoute({ ...base, privacy: 'local', device: 'stalled' });
+    expect(r.strategy).toBe('blocked');
+    expect(r.reason).toMatch(/Restart Chrome/);
+  });
+});

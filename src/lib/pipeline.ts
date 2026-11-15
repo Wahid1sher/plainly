@@ -5,7 +5,7 @@
  *   3. Explain         - Firebase AI Logic hybrid call on the redacted text (or on-device map-reduce for long docs).
  * Results are re-hydrated locally, so the user sees their own details and the cloud never does.
  */
-import { generateJSON, generateText, InferenceMode, ON_DEVICE_LANGS, type DeviceState, type Mode, type Where } from './ai';
+import { generateJSON, generateText, InferenceMode, isDeviceStalled, ON_DEVICE_LANGS, type DeviceState, type Mode, type Where } from './ai';
 import type { RuntimeConfig } from './firebase';
 import {
   askPrompt,
@@ -21,6 +21,7 @@ import {
   type ReadingLevel,
   type ReplyKind,
 } from './prompts';
+import { extractDates } from './dates';
 import { applyRedaction, detectWithRules, locate, mergeFindings, type Vault } from './redact';
 import { chunkText, decideRoute, type PrivacyMode, type Route } from './router';
 
@@ -69,8 +70,10 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function normalise(e: Partial<Explanation>): Explanation {
+/** Cleans model output. `doc` is the document text, used to verify deadlines (see dates.ts). */
+function normalise(e: Partial<Explanation>, doc: string): Explanation {
   const arr = <T,>(v: T[] | undefined) => (Array.isArray(v) ? v : []);
+  const written = extractDates(doc);
   return {
     title: e.title || 'Your document',
     docType: e.docType || '',
@@ -78,7 +81,13 @@ function normalise(e: Partial<Explanation>): Explanation {
     urgency: e.urgency === 'high' || e.urgency === 'low' ? e.urgency : 'medium',
     summary: e.summary || '',
     keyPoints: arr(e.keyPoints),
-    actions: arr(e.actions).map((a) => ({ task: a.task || '', deadline: /^\d{4}-\d{2}-\d{2}$/.test(a.deadline || '') ? a.deadline : '', why: a.why || '' })),
+    actions: arr(e.actions).map((a) => {
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(a.deadline || '') ? a.deadline : '';
+      const verified = Boolean(d) && written.has(d);
+      const why = a.why || '';
+      // A date that isn't written in the document is dropped rather than risk showing a wrong deadline.
+      return { task: a.task || '', deadline: verified ? d : '', why: d && !verified ? `${why} (Check the letter for the exact date.)`.trim() : why };
+    }),
     money: arr(e.money),
     questions: arr(e.questions),
     watchOut: arr(e.watchOut),
@@ -96,7 +105,7 @@ export async function shield(text: string, s: Settings, progress: Progress) {
   steps.push({ id: 'shield-rules', label: 'Pattern check', where: 'rules', ms: Math.round(performance.now() - t0), detail: `${ruleFindings.length} details found by local pattern rules` });
 
   let modelFindings: ReturnType<typeof locate> = [];
-  if (s.config.onDeviceShield && s.device === 'available') {
+  if (s.config.onDeviceShield && s.device === 'available' && !isDeviceStalled()) {
     t0 = performance.now();
     try {
       // Always ONLY_ON_DEVICE: the raw document must never be sent to the cloud.
@@ -119,7 +128,7 @@ export async function shield(text: string, s: Settings, progress: Progress) {
   }
 
   const result = applyRedaction(text, mergeFindings(ruleFindings, modelFindings));
-  progress({ id: 'shield', label: 'Hiding personal details', status: 'done', detail: `${Object.keys(result.vault).length} personal details hidden`, where: modelFindings.length || s.device === 'available' ? 'on-device' : 'rules' });
+  progress({ id: 'shield', label: 'Hiding personal details', status: 'done', detail: `${Object.keys(result.vault).length} personal details hidden`, where: modelFindings.length ? 'on-device' : 'rules' });
   return { ...result, steps };
 }
 
@@ -128,7 +137,7 @@ export async function shield(text: string, s: Settings, progress: Progress) {
 export function route(redacted: string, s: Settings): Route {
   return decideRoute({
     privacy: s.privacy,
-    device: s.device,
+    device: isDeviceStalled() ? 'stalled' : s.device,
     chars: redacted.length,
     maxOnDeviceChars: s.config.onDeviceMaxChars,
     outLang: s.outLang,
@@ -190,7 +199,7 @@ export async function explain(redacted: string, r: Route, s: Settings, progress:
     detail: retried ? 'Retried in the cloud after an on-device error' : res.where === 'on-device' ? 'Gemini Nano' : 'Gemini in the cloud',
   });
   progress({ id: 'explain', label: 'Explaining in plain language', status: 'done', where: res.where, detail: `${(res.ms / 1000).toFixed(1)}s` });
-  return { explanation: normalise(res.data), steps };
+  return { explanation: normalise(res.data, redacted), steps };
 }
 
 export async function analyze(text: string, s: Settings, progress: Progress): Promise<Analysis> {

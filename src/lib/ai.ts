@@ -21,7 +21,59 @@ export interface CallResult<T> {
 /** Output languages Gemini Nano in Chrome can currently write. Others are routed to the cloud. */
 export const ON_DEVICE_LANGS = ['en', 'es', 'ja'];
 
-export type DeviceState = 'available' | 'downloadable' | 'downloading' | 'unavailable' | 'unsupported';
+export type DeviceState = 'available' | 'downloadable' | 'downloading' | 'unavailable' | 'unsupported' | 'stalled';
+
+// ---------- Stall protection ----------
+// Chrome can report Gemini Nano as "available" while its on-device service is hung. Every call that may
+// run on-device is raced against a timeout; after a stall, Nano is skipped for the rest of the session so
+// Balanced mode goes straight to the cloud (still on redacted text) instead of making the user wait again.
+
+export class OnDeviceTimeoutError extends Error {
+  constructor(seconds: number) {
+    super(`Gemini Nano did not respond within ${seconds}s. Restarting Chrome usually fixes this.`);
+    this.name = 'OnDeviceTimeoutError';
+  }
+}
+
+let onDeviceTimeoutMs = 45_000;
+export function setOnDeviceTimeout(ms: number) {
+  if (ms > 0) onDeviceTimeoutMs = ms;
+}
+
+let stalled = false;
+const stallListeners = new Set<() => void>();
+export function isDeviceStalled() {
+  return stalled;
+}
+export function onDeviceStall(cb: () => void) {
+  stallListeners.add(cb);
+  return () => stallListeners.delete(cb);
+}
+function markStalled() {
+  if (stalled) return;
+  stalled = true;
+  stallListeners.forEach((cb) => cb());
+}
+
+/** Resolves with the promise, or rejects if no progress is reported within the on-device budget. */
+function guard<T>(mode: Mode, run: (progress: () => void) => Promise<T>): Promise<T> {
+  if (mode === 'only_in_cloud') return run(() => {});
+  return new Promise<T>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        markStalled();
+        reject(new OnDeviceTimeoutError(Math.round(onDeviceTimeoutMs / 1000)));
+      }, onDeviceTimeoutMs);
+    };
+    arm();
+    run(arm).then(
+      (v) => (clearTimeout(timer), resolve(v)),
+      (e) => (clearTimeout(timer), reject(e))
+    );
+  });
+}
 
 interface LanguageModelStatic {
   availability(opts?: object): Promise<string>;
@@ -36,6 +88,7 @@ export async function getDeviceState(): Promise<DeviceState> {
   if (MOCK_AI) return (localStorage.getItem('plainly:mockDevice') as DeviceState) || 'available';
   const lm = languageModelApi();
   if (!lm) return 'unsupported';
+  if (stalled) return 'stalled';
   try {
     const a = await lm.availability({
       expectedInputs: [{ type: 'text', languages: ['en'] }],
@@ -62,8 +115,24 @@ interface ModelOptions {
   temperature?: number;
 }
 
+/**
+ * Models are cached per configuration. Each GenerativeModel's Chrome adapter keeps its last Gemini Nano
+ * session alive and destroys it only when that same model creates the next one. Building a fresh model per
+ * call leaked one live on-device session per request, and after a few runs Chrome's on-device service hung.
+ */
+const modelCache = new Map<string, GenerativeModel>();
+
 function buildModel(o: ModelOptions): GenerativeModel {
   const lang = o.outLang && ON_DEVICE_LANGS.includes(o.outLang) ? o.outLang : 'en';
+  const key = JSON.stringify([o.mode, lang, !!o.image, o.temperature ?? 0.2, cloudModel, o.schema ?? null]);
+  const cached = modelCache.get(key);
+  if (cached) return cached;
+  const model = createModel(o, lang);
+  modelCache.set(key, model);
+  return model;
+}
+
+function createModel(o: ModelOptions, lang: string): GenerativeModel {
   return getGenerativeModel(getAIInstance(), {
     mode: o.mode,
     inCloudParams: {
@@ -118,7 +187,7 @@ export function parseJSON<T>(text: string): T {
 export async function generateJSON<T>(task: string, prompt: string | (string | Part)[], o: ModelOptions): Promise<CallResult<T>> {
   const t0 = performance.now();
   if (MOCK_AI) return mockJSON<T>(task, prompt, o.mode);
-  const res = await buildModel(o).generateContent(prompt);
+  const res = await guard(o.mode, () => buildModel(o).generateContent(prompt));
   const data = parseJSON<T>(res.response.text());
   return { data, where: whereFrom(res.response.inferenceSource, o.mode), ms: Math.round(performance.now() - t0) };
 }
@@ -132,12 +201,16 @@ export async function generateText(
 ): Promise<CallResult<string>> {
   const t0 = performance.now();
   if (MOCK_AI) return mockStream(task, prompt, o.mode, onChunk);
-  const res = await buildModel({ ...o, schema: undefined }).generateContentStream(prompt);
+  // Idle timeout: each streamed chunk resets the clock, so long answers are fine; a hung model is not.
   let text = '';
-  for await (const chunk of res.stream) {
-    text += chunk.text();
-    onChunk(text);
-  }
-  const final = await res.response;
+  const final = await guard(o.mode, async (progress) => {
+    const res = await buildModel({ ...o, schema: undefined }).generateContentStream(prompt);
+    for await (const chunk of res.stream) {
+      progress();
+      text += chunk.text();
+      onChunk(text);
+    }
+    return res.response;
+  });
   return { data: text, where: whereFrom(final.inferenceSource, o.mode), ms: Math.round(performance.now() - t0) };
 }
